@@ -19,5 +19,5 @@
   "homepage": "https://github.com/phonxvzf/webgl-exp-heroku#readme",
   "dependencies": {
     "express": "^4.16.2"
-  },
+  }
 }
