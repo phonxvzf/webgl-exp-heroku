@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>WebGL Experiment</title>
+    <style>
+        body, canvas {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #fpsBlock {
+            position: absolute;
+            z-index: 1;
+            color: #fff;
+            text-align: right;
+            top: 40px;
+            left: 50px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="glCanvas" width="640" height="480"></canvas>
+    <code id="fpsBlock"><span id="fps">calculating</span> fps</code>
+    <script src="js/gl-matrix-min.js"></script>
+    <script>
+        vertexShaderCode = `
+                attribute vec3 in_position;
+                attribute vec2 in_tex_coords;
+                attribute vec3 in_normal;
+                uniform mat4 u_model;
+                uniform mat4 u_view;
+                uniform mat4 u_proj;
+                varying vec2 v_tex_coords;
+                varying vec3 v_normal;
+                varying vec3 v_frag_pos;
+                void main() {
+                    v_tex_coords = in_tex_coords;
+                    v_normal = in_normal;
+                    v_frag_pos = (u_model * vec4(in_position, 1.0)).xyz;
+                    gl_Position = u_proj * u_view * u_model * vec4(in_position, 1.0);
+                }
+            `;
+        fragmentShaderCode = `
+                precision mediump float;
+                varying vec2 v_tex_coords;
+                varying vec3 v_normal;
+                varying vec3 v_frag_pos;
+                uniform sampler2D u_sampler;
+                uniform vec4 u_light_clr;
+                uniform vec3 u_light_pos;
+                uniform vec3 u_cam_pos;
+                void main() {
+                    vec3 light_dir = normalize(u_light_pos - v_frag_pos);
+                    vec3 view_dir = normalize(u_cam_pos - v_frag_pos);
+                    vec3 normal = normalize(v_normal);
+                    float ambient_str = 0.2;
+                    float specular_str = 0.3;
+                    vec3 ambient = ambient_str * u_light_clr.xyz;
+                    vec3 diffuse = max(dot(normal, light_dir), 0.0) * u_light_clr.xyz;
+                    vec3 specular = specular_str * pow(max(dot(view_dir, reflect(-light_dir, normal)), 0.0), 32.0) * u_light_clr.xyz;
+                    gl_FragColor = vec4(ambient + diffuse + specular, 1.0) * texture2D(u_sampler, v_tex_coords);
+                }
+            `;
+        lampVertexShaderCode = `
+                attribute vec3 in_position;
+                attribute vec2 in_tex_coords;
+                uniform mat4 u_model;
+                uniform mat4 u_view;
+                uniform mat4 u_proj;
+                varying vec2 v_tex_coords;
+                void main() {
+                    v_tex_coords = in_tex_coords;
+                    gl_Position = u_proj * u_view * u_model * vec4(in_position, 1.0);
+                }
+            `;
+        lampFragmentShaderCode = `
+                precision mediump float;
+                varying vec2 v_tex_coords;
+                uniform sampler2D u_sampler;
+                void main() {
+                    gl_FragColor = texture2D(u_sampler, v_tex_coords);
+                }
+            `;
+
+        const BOX_VERTICES = [
+            -0.5, -0.5, -0.5, 0.0, 0.0, 0.0, 0.0, -1.0,
+            0.5, -0.5, -0.5, 1.0, 0.0, 0.0, 0.0, -1.0,
+            0.5, 0.5, -0.5, 1.0, 1.0, 0.0, 0.0, -1.0,
+            0.5, 0.5, -0.5, 1.0, 1.0, 0.0, 0.0, -1.0,
+            -0.5, 0.5, -0.5, 0.0, 1.0, 0.0, 0.0, -1.0,
+            -0.5, -0.5, -0.5, 0.0, 0.0, 0.0, 0.0, -1.0,
+
+            -0.5, -0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 1.0,
+            0.5, -0.5, 0.5, 1.0, 0.0, 0.0, 0.0, 1.0,
+            0.5, 0.5, 0.5, 1.0, 1.0, 0.0, 0.0, 1.0,
+            0.5, 0.5, 0.5, 1.0, 1.0, 0.0, 0.0, 1.0,
+            -0.5, 0.5, 0.5, 0.0, 1.0, 0.0, 0.0, 1.0,
+            -0.5, -0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 1.0,
+
+            -0.5, 0.5, 0.5, 1.0, 0.0, -1.0, 0.0, 0.0,
+            -0.5, 0.5, -0.5, 1.0, 1.0, -1.0, 0.0, 0.0,
+            -0.5, -0.5, -0.5, 0.0, 1.0, -1.0, 0.0, 0.0,
+            -0.5, -0.5, -0.5, 0.0, 1.0, -1.0, 0.0, 0.0,
+            -0.5, -0.5, 0.5, 0.0, 0.0, -1.0, 0.0, 0.0,
+            -0.5, 0.5, 0.5, 1.0, 0.0, -1.0, 0.0, 0.0,
+
+            0.5, 0.5, 0.5, 1.0, 0.0, 1.0, 0.0, 0.0,
+            0.5, 0.5, -0.5, 1.0, 1.0, 1.0, 0.0, 0.0,
+            0.5, -0.5, -0.5, 0.0, 1.0, 1.0, 0.0, 0.0,
+            0.5, -0.5, -0.5, 0.0, 1.0, 1.0, 0.0, 0.0,
+            0.5, -0.5, 0.5, 0.0, 0.0, 1.0, 0.0, 0.0,
+            0.5, 0.5, 0.5, 1.0, 0.0, 1.0, 0.0, 0.0,
+
+            -0.5, -0.5, -0.5, 0.0, 1.0, 0.0, -1.0, 0.0,
+            0.5, -0.5, -0.5, 1.0, 1.0, 0.0, -1.0, 0.0,
+            0.5, -0.5, 0.5, 1.0, 0.0, 0.0, -1.0, 0.0,
+            0.5, -0.5, 0.5, 1.0, 0.0, 0.0, -1.0, 0.0,
+            -0.5, -0.5, 0.5, 0.0, 0.0, 0.0, -1.0, 0.0,
+            -0.5, -0.5, -0.5, 0.0, 1.0, 0.0, -1.0, 0.0,
+
+            -0.5, 0.5, -0.5, 0.0, 1.0, 0.0, 1.0, 0.0,
+            0.5, 0.5, -0.5, 1.0, 1.0, 0.0, 1.0, 0.0,
+            0.5, 0.5, 0.5, 1.0, 0.0, 0.0, 1.0, 0.0,
+            0.5, 0.5, 0.5, 1.0, 0.0, 0.0, 1.0, 0.0,
+            -0.5, 0.5, 0.5, 0.0, 0.0, 0.0, 1.0, 0.0,
+            -0.5, 0.5, -0.5, 0.0, 1.0, 0.0, 1.0, 0.0
+        ];
+
+        const BOX_VERTICES_NO_NORM = [
+            -0.5, -0.5, -0.5, 0.0, 0.0,
+            0.5, -0.5, -0.5, 1.0, 0.0, 
+            0.5, 0.5, -0.5, 1.0, 1.0,
+            0.5, 0.5, -0.5, 1.0, 1.0,
+            -0.5, 0.5, -0.5, 0.0, 1.0, 
+            -0.5, -0.5, -0.5, 0.0, 0.0,
+
+            -0.5, -0.5, 0.5, 0.0, 0.0,
+            0.5, -0.5, 0.5, 1.0, 0.0, 
+            0.5, 0.5, 0.5, 1.0, 1.0,
+            0.5, 0.5, 0.5, 1.0, 1.0,
+            -0.5, 0.5, 0.5, 0.0, 1.0,
+            -0.5, -0.5, 0.5, 0.0, 0.0,
+
+            -0.5, 0.5, 0.5, 1.0, 0.0,
+            -0.5, 0.5, -0.5, 1.0, 1.0,
+            -0.5, -0.5, -0.5, 0.0, 1.0,
+            -0.5, -0.5, -0.5, 0.0, 1.0,
+            -0.5, -0.5, 0.5, 0.0, 0.0,
+            -0.5, 0.5, 0.5, 1.0, 0.0,
+
+            0.5, 0.5, 0.5, 1.0, 0.0,
+            0.5, 0.5, -0.5, 1.0, 1.0,
+            0.5, -0.5, -0.5, 0.0, 1.0,
+            0.5, -0.5, -0.5, 0.0, 1.0,
+            0.5, -0.5, 0.5, 0.0, 0.0,
+            0.5, 0.5, 0.5, 1.0, 0.0,
+
+            -0.5, -0.5, -0.5, 0.0, 1.0,
+            0.5, -0.5, -0.5, 1.0, 1.0,
+            0.5, -0.5, 0.5, 1.0, 0.0,
+            0.5, -0.5, 0.5, 1.0, 0.0,
+            -0.5, -0.5, 0.5, 0.0, 0.0,
+            -0.5, -0.5, -0.5, 0.0, 1.0,
+
+            -0.5, 0.5, -0.5, 0.0, 1.0,
+            0.5, 0.5, -0.5, 1.0, 1.0,
+            0.5, 0.5, 0.5, 1.0, 0.0,
+            0.5, 0.5, 0.5, 1.0, 0.0,
+            -0.5, 0.5, 0.5, 0.0, 0.0,
+            -0.5, 0.5, -0.5, 0.0, 1.0,
+        ];
+
+        function loadShader(gl, type, src) {
+            const shaderObject = gl.createShader(type);
+            gl.shaderSource(shaderObject, src);
+            gl.compileShader(shaderObject);
+            if (!gl.getShaderParameter(shaderObject, gl.COMPILE_STATUS)) {
+                alert("Shader compilation error: " + gl.getShaderInfoLog(shaderObject));
+                gl.deleteShader(shaderObject);
+                return null;
+            }
+            return shaderObject;
+        }
+
+        function loadShaderProgram(gl, vert, frag) {
+            const shaderProgram = gl.createProgram();
+            gl.attachShader(shaderProgram, vert);
+            gl.attachShader(shaderProgram, frag);
+            gl.linkProgram(shaderProgram);
+            if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+                alert("Shader program linking error: " + gl.getProgramInfoLog(shaderProgram));
+            }
+            return shaderProgram;
+        }
+
+        class Box {
+            constructor(gl, position, programInfo, texture, vertices) {
+                this.modelMatrix = mat4.create();
+                this.position = position;
+                this.pos = position;
+                this.buffer = gl.createBuffer();
+                this.programInfo = programInfo;
+                this.texture = texture;
+                const program = programInfo.program;
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+            }
+
+            get position() {
+                return this.pos;
+            }
+
+            set position(newPos) {
+                mat4.translate(this.modelMatrix, this.modelMatrix, newPos);
+            }
+        }
+
+        class NormalBox extends Box {
+            constructor(gl, position, programInfo, texture, vertices) {
+                super(gl, position, programInfo, texture, vertices);
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+                const program = programInfo.program;
+                const positionLoc = gl.getAttribLocation(program, "in_position");
+                const texCoordLoc = gl.getAttribLocation(program, "in_tex_coords");
+                const normLoc = gl.getAttribLocation(program, "in_normal");
+                // position
+                gl.vertexAttribPointer(
+                    positionLoc,
+                    3,
+                    gl.FLOAT,
+                    false,
+                    32,
+                    0
+                );
+                gl.enableVertexAttribArray(positionLoc);
+                // texture coordinates
+                gl.vertexAttribPointer(
+                    texCoordLoc,
+                    2,
+                    gl.FLOAT,
+                    false,
+                    32,
+                    12
+                );
+                gl.enableVertexAttribArray(texCoordLoc);
+                // normal vectors
+                gl.vertexAttribPointer(
+                    normLoc,
+                    3,
+                    gl.FLOAT,
+                    false,
+                    32,
+                    20
+                );
+                gl.enableVertexAttribArray(normLoc);
+            }
+
+            draw(gl, camera, lamp) {
+                const programInfo = this.programInfo;
+                gl.useProgram(programInfo.program);
+
+                gl.uniform1i(programInfo.u_sampler_loc, 0);
+                gl.uniformMatrix4fv(programInfo.u_model_loc, false, this.modelMatrix);
+                gl.uniformMatrix4fv(programInfo.u_view_loc, false, camera.viewMatrix);
+                gl.uniformMatrix4fv(programInfo.u_proj_loc, false, camera.projMatrix);
+                gl.uniform4fv(programInfo.u_light_clr_loc, lamp.lightColor);
+                gl.uniform3fv(programInfo.u_light_pos_loc, lamp.position);
+                gl.uniform3fv(programInfo.u_cam_pos_loc, camera.position);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+                gl.bindTexture(gl.TEXTURE_2D, this.texture.texture);
+                gl.activeTexture(gl.TEXTURE0);
+
+                gl.drawArrays(gl.TRIANGLES, 0, 36);
+            }
+        }
+
+        class Texture {
+            constructor(gl, url, defaultColor = [255, 0, 0, 255]) {
+                this.texture = gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D, this.texture);
+                // default texture
+                // use color red until the image is loaded
+                gl.texImage2D(
+                    gl.TEXTURE_2D,
+                    0,
+                    gl.RGBA,
+                    1,
+                    1,
+                    0,
+                    gl.RGBA,
+                    gl.UNSIGNED_BYTE,
+                    new Uint8Array(defaultColor)
+                );
+
+                if (url) {
+                    const image = new Image();
+                    image.src = url;
+                    image.onload = () => {
+                        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+                        gl.texImage2D(
+                            gl.TEXTURE_2D,
+                            0,
+                            gl.RGBA,
+                            gl.RGBA,
+                            gl.UNSIGNED_BYTE,
+                            image
+                        );
+                        gl.generateMipmap(gl.TEXTURE_2D);
+                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                    };
+                }
+            }
+
+            bind() {
+                gl.bindTexture(gl.TEXTURE_2D, this.texture);
+            }
+        }
+
+        class Camera {
+            constructor(position, fov, aspect, near, far) {
+                this.viewMatrix = mat4.create();
+                this.projMatrix = mat4.create();
+                this.pos = position;
+                mat4.perspective(
+                    this.projMatrix,
+                    glMatrix.toRadian(fov),
+                    aspect,
+                    near,
+                    far
+                );
+            }
+
+            get position() { return this.pos; }
+
+            set position(newPos) {
+                this.pos = newPos;
+                mat4.lookAt(this.viewMatrix, newPos, [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+            }
+        }
+
+        class Lamp extends Box {
+            constructor(gl, position, programInfo, vertices, lightColor) {
+                super(gl, position, programInfo, new Texture(gl, null, lightColor), vertices);
+                this.color = lightColor;
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+                const program = programInfo.program;
+                const positionLoc = gl.getAttribLocation(program, "in_position");
+                const texCoordLoc = gl.getAttribLocation(program, "in_tex_coords");
+                // position
+                gl.vertexAttribPointer(
+                    positionLoc,
+                    3,
+                    gl.FLOAT,
+                    false,
+                    20,
+                    0
+                );
+                gl.enableVertexAttribArray(positionLoc);
+                // texture coordinates
+                gl.vertexAttribPointer(
+                    texCoordLoc,
+                    2,
+                    gl.FLOAT,
+                    false,
+                    20,
+                    12
+                );
+                gl.enableVertexAttribArray(texCoordLoc);
+            }
+
+            get lightColor() { return this.color.map(clr => clr / 255); }
+
+            draw(gl, camera) {
+                const programInfo = this.programInfo;
+                gl.useProgram(programInfo.program);
+
+                gl.uniform1i(programInfo.u_sampler_loc, 0);
+                gl.uniformMatrix4fv(programInfo.u_model_loc, false, this.modelMatrix);
+                gl.uniformMatrix4fv(programInfo.u_view_loc, false, camera.viewMatrix);
+                gl.uniformMatrix4fv(programInfo.u_proj_loc, false, camera.projMatrix);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+                gl.bindTexture(gl.TEXTURE_2D, this.texture.texture);
+                gl.activeTexture(gl.TEXTURE0);
+
+                gl.drawArrays(gl.TRIANGLES, 0, 36); // 36 vertices!
+            }
+        }
+
+        var frameCount = 0;
+        var lastTick = (new Date()).getTime();
+        var fps = document.getElementById("fps");
+        var radius = 5, omega = 0.0005;
+        function drawScene(gl, camera, objects) {
+
+            // clear back buffer
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.clearDepth(1.0);
+
+            // set camera position
+            var now = (new Date()).getTime();
+            camera.position = [radius * Math.sin(now * omega), camera.position[1], radius * Math.cos(now * omega)];
+
+            // draw things
+            objects.box.draw(gl, camera, objects.lamp);
+            objects.lamp.draw(gl, camera);
+
+            // calculate fps
+            ++frameCount;
+            now = (new Date()).getTime();
+            if (now - lastTick >= 3000) {
+                fps.innerHTML = (frameCount / 3).toFixed(2);
+                frameCount = 0;
+                lastTick = now;
+            }
+
+            var err = gl.getError();
+            if (err != gl.NO_ERROR) alert("gl.getError() returned " + err + ".");
+
+            // swap buffers and request new frame
+            requestAnimationFrame(() => { drawScene(gl, camera, objects); });
+        }
+
+        function main() {
+            const canvas = document.querySelector("#glCanvas");
+            const gl = canvas.getContext("webgl");
+            if (!gl) {
+                alert("Unable to initialize WebGL.");
+                return;
+            }
+
+            const boxVert = loadShader(gl, gl.VERTEX_SHADER, vertexShaderCode);
+            const boxFrag = loadShader(gl, gl.FRAGMENT_SHADER, fragmentShaderCode);
+            const boxProgram = loadShaderProgram(gl, boxVert, boxFrag);
+
+            const lampVert = loadShader(gl, gl.VERTEX_SHADER, lampVertexShaderCode);
+            const lampFrag = loadShader(gl, gl.FRAGMENT_SHADER, lampFragmentShaderCode);
+            const lampProgram = loadShaderProgram(gl, lampVert, lampFrag);
+
+            const boxProgramInfo = {
+                program: boxProgram,
+                u_model_loc: gl.getUniformLocation(boxProgram, "u_model"),
+                u_view_loc: gl.getUniformLocation(boxProgram, "u_view"),
+                u_proj_loc: gl.getUniformLocation(boxProgram, "u_proj"),
+                u_sampler_loc: gl.getUniformLocation(boxProgram, "u_sampler"),
+                u_light_clr_loc: gl.getUniformLocation(boxProgram, "u_light_clr"),
+                u_light_pos_loc: gl.getUniformLocation(boxProgram, "u_light_pos"),
+                u_cam_pos_loc: gl.getUniformLocation(boxProgram, "u_cam_pos")
+            };
+
+            const lampProgramInfo = {
+                program: lampProgram,
+                u_model_loc: gl.getUniformLocation(lampProgram, "u_model"),
+                u_view_loc: gl.getUniformLocation(lampProgram, "u_view"),
+                u_proj_loc: gl.getUniformLocation(lampProgram, "u_proj"),
+                u_sampler_loc: gl.getUniformLocation(lampProgram, "u_sampler"),
+            };
+
+            var camera = new Camera([0, 1.0, radius], 45, 640/480, 0.1, 100);
+            var texture = new Texture(gl, "img/marble_res.png");
+            var box = new NormalBox(
+                gl,
+                [0.0, 0.0, 0.0],
+                boxProgramInfo,
+                texture,
+                BOX_VERTICES
+            );
+            var lamp = new Lamp(
+                gl,
+                [2.5, -1.0, 2.5],
+                lampProgramInfo,
+                BOX_VERTICES_NO_NORM,
+                [255, 255, 255, 255]
+            );
+
+            gl.enable(gl.DEPTH_TEST);
+            gl.depthFunc(gl.LESS);
+            drawScene(
+                gl,
+                camera,
+                {
+                    box: box,
+                    lamp: lamp
+                }
+            );
+        }
+        main();
+    </script>
+</body>
+
+</html>
