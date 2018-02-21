@@ -1,0 +1,22 @@
+{
+  "name": "webgl-expr",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phonxvzf/webgl-exp-heroku.git"
+  },
+  "author": "Phon Chitnelawong",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/phonxvzf/webgl-exp-heroku/issues"
+  },
+  "homepage": "https://github.com/phonxvzf/webgl-exp-heroku#readme",
+  "dependencies": {
+    "express": "^4.16.2"
+  }
+}
