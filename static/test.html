@@ -15,7 +15,7 @@
             position: absolute;
             z-index: 1;
             color: #fff;
-            text-align: right;
+            text-align: left;
             top: 40px;
             left: 50px;
         }
@@ -24,8 +24,18 @@
 
 <body>
     <canvas id="glCanvas" width="640" height="480"></canvas>
-    <code id="fpsBlock"><span id="fps">calculating</span> fps</code>
+    <code id="fpsBlock">
+        <i>
+        <span id="glVersion">querying WebGL version</span><br>
+        <span id="glShading">querying WebGL shading version</span><br>
+        <span id="glVendor">querying WebGL vendor</span><br>
+        </i>
+        <hr>
+        <span id="fps">calculating</span> fps<br>
+        <span id="frametime">calculating frame time</span>
+    </code>
     <script src="js/gl-matrix-min.js"></script>
+    <script src="js/jquery.min.js"></script>
     <script>
         vertexShaderCode = `
                 #version 100
@@ -400,11 +410,25 @@
             }
         }
 
+        const RADIUS = 5;
+        const ROT_X_OMEGA = 600, ROT_Y_OMEGA = 600;
+        var rotXOmega = 0, rotYOmega = 0; // degrees per sec
+
         var frameCount = 0;
         var lastTick = (new Date()).getTime();
+        var lastTickB = lastTick;
+        var frametime = 0;
         var fps = document.getElementById("fps");
-        var radius = 5, omega = 0.0005;
+        var camRotateMatX = mat4.create(), camRotateMatY = mat4.create();
+        var camRotateMat = mat4.create();
+        var camRight = vec3.create();
         function drawScene(gl, camera, objects) {
+
+            // calulate frame time
+            var now = (new Date()).getTime();
+            var dt = now - lastTick;
+            lastTick = now;
+            frametime += dt;
 
             // clear back buffer
             gl.clearColor(0.0, 0.0, 0.0, 1.0);
@@ -412,8 +436,22 @@
             gl.clearDepth(1.0);
 
             // set camera position
-            var now = (new Date()).getTime();
-            camera.position = [radius * Math.sin(now * omega), camera.position[1], radius * Math.cos(now * omega)];
+            let rotXAngle = (rotXOmega*dt/1e3) % 360;
+            let rotYAngle = (rotYOmega*dt/1e3) % 360;
+            vec3.cross(camRight, [0.0, 1.0, 0.0], camera.position);
+            mat4.fromRotation(camRotateMatX, glMatrix.toRadian(rotXAngle), camRight);
+            mat4.fromRotation(camRotateMatY, glMatrix.toRadian(rotYAngle), [0.0, 1.0, 0.0]);
+            mat4.mul(camRotateMat, camRotateMatX, camRotateMatY);
+            let newPos = vec4.create();
+            vec4.transformMat4(newPos, [
+                camera.position[0],
+                camera.position[1],
+                camera.position[2],
+                1.0
+            ], camRotateMat);
+            camera.position = newPos.slice(0, 3);
+            rotXOmega = 0;
+            rotYOmega = 0;
 
             // draw things
             objects.box.draw(gl, camera, objects.lamp);
@@ -421,11 +459,12 @@
 
             // calculate fps
             ++frameCount;
-            now = (new Date()).getTime();
-            if (now - lastTick >= 3000) {
-                fps.innerHTML = (frameCount / 3).toFixed(2);
+            if (now - lastTickB >= 3000) {
+                fps.innerHTML = (frameCount/(now-lastTickB)*1e3).toFixed(2);
+                lastTickB = now;
+                $("#frametime").text((frametime / frameCount).toFixed(2) + " ms");
+                frametime = 0;
                 frameCount = 0;
-                lastTick = now;
             }
 
             var err = gl.getError();
@@ -443,9 +482,9 @@
                 return;
             }
 
-            alert(gl.getParameter(gl.VERSION));
-            alert(gl.getParameter(gl.SHADING_LANGUAGE_VERSION));
-            alert(gl.getParameter(gl.VENDOR));
+            $("#glVersion").text(gl.getParameter(gl.VERSION));
+            $("#glShading").text(gl.getParameter(gl.SHADING_LANGUAGE_VERSION));
+            $("#glVendor").text(gl.getParameter(gl.VENDOR));
 
             const boxVert = loadShader(gl, gl.VERTEX_SHADER, vertexShaderCode);
             const boxFrag = loadShader(gl, gl.FRAGMENT_SHADER, fragmentShaderCode);
@@ -474,7 +513,7 @@
                 u_sampler_loc: gl.getUniformLocation(lampProgram, "u_sampler"),
             };
 
-            var camera = new Camera([0, 1.0, radius], 45, 640/480, 0.1, 100);
+            var camera = new Camera([0, 0, RADIUS], 45, 640/480, 0.1, 100);
             var texture = new Texture(gl, "img/marble_res.png");
             var box = new NormalBox(
                 gl,
@@ -502,7 +541,44 @@
                 }
             );
         }
-        main();
+
+        var isMouseHeld = false;
+        var canvasPos = {x: 0, y: 0};
+        var mousePos = {x: 0, y: 0};
+        var oldMousePos = {x: mousePos.x, y: mousePos.y};
+        $(document).ready(() => {
+            canvasPos.x = $("#glCanvas").offset().left;
+            canvasPos.y = $("#glCanvas").offset().top;
+            // handle events
+            $("#glCanvas").mousedown(() => {
+                isMouseHeld = true;
+            });
+            $("#glCanvas").mouseup(() => {
+                isMouseHeld = false;
+                rotXOmega = 0;
+                rotYOmega = 0;
+            });
+            $("#glCanvas").mousemove((e) => {
+                mousePos.x = e.pageX - canvasPos.x;
+                mousePos.y = e.pageY - canvasPos.y;
+                if (isMouseHeld) {
+                    let dx = mousePos.x - oldMousePos.x;
+                    let dy = mousePos.y - oldMousePos.y;
+                    if (dy > 0) rotXOmega = -ROT_X_OMEGA;
+                    else rotXOmega = dy == 0 ? 0 : ROT_X_OMEGA;
+                    if (dx > 0) rotYOmega = -ROT_Y_OMEGA;
+                    else rotYOmega = dx == 0 ? 0 : ROT_Y_OMEGA;
+                }
+                else {
+                    rotXOmega = 0;
+                    rotYOmega = 0;
+                }
+                oldMousePos.x = mousePos.x;
+                oldMousePos.y = mousePos.y;
+            });
+            main();
+        });
+        
     </script>
 </body>
 
