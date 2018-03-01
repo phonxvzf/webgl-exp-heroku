@@ -73,7 +73,7 @@
                     float specular_str = 0.3;
                     vec3 ambient = ambient_str * u_light_clr.xyz;
                     vec3 diffuse = max(dot(normal, light_dir), 0.0) * u_light_clr.xyz;
-                    vec3 specular = specular_str * pow(max(dot(view_dir, reflect(-light_dir, normal)), 0.0), 32.0) * u_light_clr.xyz;
+                    vec3 specular = specular_str * pow(max(dot(view_dir, reflect(-light_dir, normal)), 0.0), 128.0) * u_light_clr.xyz;
                     gl_FragColor = vec4(ambient + diffuse + specular, 1.0) * texture2D(u_sampler, v_tex_coords);
                 }
             `;
@@ -229,7 +229,8 @@
             }
 
             set position(newPos) {
-                mat4.translate(this.modelMatrix, this.modelMatrix, newPos);
+                this.pos = newPos;
+                mat4.fromTranslation(this.modelMatrix, newPos);
             }
         }
 
@@ -412,6 +413,7 @@
 
         const RADIUS = 5;
         const ROT_X_OMEGA = 100, ROT_Y_OMEGA = 100;
+        const LAMP_ROT_OMEGA = 180;
         var rotXOmega = 0, rotYOmega = 0; // degrees per sec
 
         var frameCount = 0;
@@ -422,6 +424,7 @@
         var camRotateMatX = mat4.create(), camRotateMatY = mat4.create();
         var camRotateMat = mat4.create();
         var camRight = vec3.create();
+        var lampRotMat = mat4.create();
         function drawScene(gl, camera, objects) {
 
             // calulate frame time
@@ -435,6 +438,21 @@
             gl.clear(gl.COLOR_BUFFER_BIT);
             gl.clearDepth(1.0);
 
+            // set lamp position
+            let newPos = vec4.create();
+            let rotAngle = (LAMP_ROT_OMEGA*dt/1e3) % 360;
+            mat4.fromRotation(lampRotMat, glMatrix.toRadian(rotAngle), [0.0, 1.0, 0.0]);
+            vec4.transformMat4(newPos,
+                [
+                    objects.lamp.position[0],
+                    objects.lamp.position[1],
+                    objects.lamp.position[2],
+                    1.0
+                ],
+                lampRotMat
+            );
+            objects.lamp.position = newPos.slice(0, 3);
+
             // set camera position
             let rotXAngle = (rotXOmega*dt/1e3) % 360;
             let rotYAngle = (rotYOmega*dt/1e3) % 360;
@@ -442,7 +460,6 @@
             mat4.fromRotation(camRotateMatX, glMatrix.toRadian(rotXAngle), camRight);
             mat4.fromRotation(camRotateMatY, glMatrix.toRadian(rotYAngle), [0.0, 1.0, 0.0]);
             mat4.mul(camRotateMat, camRotateMatX, camRotateMatY);
-            let newPos = vec4.create();
             vec4.transformMat4(newPos, [
                 camera.position[0],
                 camera.position[1],
@@ -453,7 +470,7 @@
             rotXOmega = 0;
             rotYOmega = 0;
 
-            // draw things
+            // draw objects
             objects.box.draw(gl, camera, objects.lamp);
             objects.lamp.draw(gl, camera);
 
