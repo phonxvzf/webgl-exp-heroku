@@ -508,12 +508,6 @@
             $("#glShading").text(gl.getParameter(gl.SHADING_LANGUAGE_VERSION));
             $("#glVendor").text(gl.getParameter(gl.VENDOR));
 
-            OBJ.downloadMeshes({
-                'nanosuit': 'model/nanosuit/nanosuit.obj'
-            }, (meshes) => {
-                console.log(meshes.nanosuit);
-            });
-
             const boxVert = loadShader(gl, gl.VERTEX_SHADER, shaderCodes['box.vert']);
             const boxFrag = loadShader(gl, gl.FRAGMENT_SHADER, shaderCodes['box.frag']);
             const boxProgram = loadShaderProgram(gl, boxVert, boxFrag);
@@ -616,14 +610,18 @@
                             'lamp.vert',
                             'lamp.frag'
                           ];
+            var count = 0;
+            var called = false;
             for (let i = 0; i < shaders.length; ++i) {
-                let cb = () => {};
-                if (i == shaders.length-1) {
-                    cb = () => {
-                        main();
-                    };
-                }
-                $.get('shader/'+shaders[i], (code)=>{shaderCodes[shaders[i]]=code;}).done(cb);
+                $.get({
+                        url: 'shader/'+shaders[i],
+                }).done(
+                    (code)=>{
+                        shaderCodes[shaders[i]]=code;
+                        ++count;
+                        if (!called && count == shaders.length) main();
+                    }
+                );
             }
         });
         
