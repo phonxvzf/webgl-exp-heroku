@@ -79,8 +79,8 @@ class NormalBox extends Box {
         gl.uniform3fv(programInfo.u_cam_pos_loc, camera.position);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-        gl.bindTexture(gl.TEXTURE_2D, this.texture.texture);
         gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.texture.texture);
 
         gl.drawArrays(gl.TRIANGLES, 0, 36);
     }
@@ -128,8 +128,8 @@ class Lamp extends Box {
         gl.uniformMatrix4fv(programInfo.u_proj_loc, false, camera.projMatrix);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-        gl.bindTexture(gl.TEXTURE_2D, this.texture.texture);
         gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.texture.texture);
 
         gl.drawArrays(gl.TRIANGLES, 0, 36); // 36 vertices!
     }
