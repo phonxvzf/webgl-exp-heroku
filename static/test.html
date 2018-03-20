@@ -257,7 +257,7 @@
         var canvasPos = {x: 0, y: 0};
         var mousePos = {x: 0, y: 0};
         var oldMousePos = {x: mousePos.x, y: mousePos.y};
-        $(document).ready(() => {
+        $(window).on('load', () => {
             canvasPos.x = $("#glCanvas").offset().left;
             canvasPos.y = $("#glCanvas").offset().top;
             // handle events

@@ -30,7 +30,6 @@ class Texture {
                     gl.UNSIGNED_BYTE,
                     img
                 );
-
                 if (tx.isPowOf2(img.naturalWidth) && tx.isPowOf2(img.naturalHeight))
                     gl.generateMipmap(gl.TEXTURE_2D);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
