@@ -21,7 +21,7 @@ class Texture {
             var image;
             function initTexture(img, tx) {
                 gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-                gl.bindTexture(gl.TEXTURE_2D, tx);
+                gl.bindTexture(gl.TEXTURE_2D, tx.texture);
                 gl.texImage2D(
                     gl.TEXTURE_2D,
                     0,
@@ -31,7 +31,7 @@ class Texture {
                     img
                 );
 
-                if (isPowOf2(img.naturalWidth) && isPowOf2(img.naturalHeight))
+                if (tx.isPowOf2(img.naturalWidth) && tx.isPowOf2(img.naturalHeight))
                     gl.generateMipmap(gl.TEXTURE_2D);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -41,11 +41,11 @@ class Texture {
                 image = new Image();
                 image.src = url;
                 image.onload = () => {
-                    initTexture(image, this.texture);
+                    initTexture(image, this);
                 };
             }
             else {
-                initTexture(url, this.texture);
+                initTexture(url, this);
             }
         }
     }
@@ -55,6 +55,6 @@ class Texture {
     }
 
     isPowOf2(num) {
-        return (num != 0) && (x & (x-1) == 0);
+        return (num != 0) && (num & (num-1) == 0);
     }
 }
