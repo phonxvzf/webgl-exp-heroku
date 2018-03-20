@@ -36,70 +36,8 @@
     </code>
     <script src="js/gl-matrix-min.js"></script>
     <script src="js/jquery.min.js"></script>
+    <script src="js/webgl-obj-loader.min.js"></script>
     <script>
-        vertexShaderCode = `
-                #version 100
-                attribute vec3 in_position;
-                attribute vec2 in_tex_coords;
-                attribute vec3 in_normal;
-                uniform mat4 u_model;
-                uniform mat4 u_view;
-                uniform mat4 u_proj;
-                varying vec2 v_tex_coords;
-                varying vec3 v_normal;
-                varying vec3 v_frag_pos;
-                void main() {
-                    v_tex_coords = in_tex_coords;
-                    v_normal = in_normal;
-                    v_frag_pos = (u_model * vec4(in_position, 1.0)).xyz;
-                    gl_Position = u_proj * u_view * u_model * vec4(in_position, 1.0);
-                }
-            `;
-        fragmentShaderCode = `
-                #version 100
-                precision mediump float;
-                varying vec2 v_tex_coords;
-                varying vec3 v_normal;
-                varying vec3 v_frag_pos;
-                uniform sampler2D u_sampler;
-                uniform vec4 u_light_clr;
-                uniform vec3 u_light_pos;
-                uniform vec3 u_cam_pos;
-                void main() {
-                    vec3 light_dir = normalize(u_light_pos - v_frag_pos);
-                    vec3 view_dir = normalize(u_cam_pos - v_frag_pos);
-                    vec3 normal = normalize(v_normal);
-                    float ambient_str = 0.2;
-                    float specular_str = 0.3;
-                    vec3 ambient = ambient_str * u_light_clr.xyz;
-                    vec3 diffuse = max(dot(normal, light_dir), 0.0) * u_light_clr.xyz;
-                    vec3 specular = specular_str * pow(max(dot(view_dir, reflect(-light_dir, normal)), 0.0), 128.0) * u_light_clr.xyz;
-                    gl_FragColor = vec4(ambient + diffuse + specular, 1.0) * texture2D(u_sampler, v_tex_coords);
-                }
-            `;
-        lampVertexShaderCode = `
-                #version 100
-                attribute vec3 in_position;
-                attribute vec2 in_tex_coords;
-                uniform mat4 u_model;
-                uniform mat4 u_view;
-                uniform mat4 u_proj;
-                varying vec2 v_tex_coords;
-                void main() {
-                    v_tex_coords = in_tex_coords;
-                    gl_Position = u_proj * u_view * u_model * vec4(in_position, 1.0);
-                }
-            `;
-        lampFragmentShaderCode = `
-                #version 100
-                precision mediump float;
-                varying vec2 v_tex_coords;
-                uniform sampler2D u_sampler;
-                void main() {
-                    gl_FragColor = texture2D(u_sampler, v_tex_coords);
-                }
-            `;
-
         const BOX_VERTICES = [
             -0.5, -0.5, -0.5, 0.0, 0.0, 0.0, 0.0, -1.0,
             0.5, -0.5, -0.5, 1.0, 0.0, 0.0, 0.0, -1.0,
@@ -211,17 +149,10 @@
             return shaderProgram;
         }
 
-        class Box {
-            constructor(gl, position, programInfo, texture, vertices) {
+        class WorldEntity {
+            constructor(position) {
                 this.modelMatrix = mat4.create();
-                this.position = position;
                 this.pos = position;
-                this.buffer = gl.createBuffer();
-                this.programInfo = programInfo;
-                this.texture = texture;
-                const program = programInfo.program;
-                gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
             }
 
             get position() {
@@ -231,6 +162,18 @@
             set position(newPos) {
                 this.pos = newPos;
                 mat4.fromTranslation(this.modelMatrix, newPos);
+            }
+        }
+
+        class Box extends WorldEntity {
+            constructor(gl, position, programInfo, texture, vertices) {
+                super(position);
+                this.buffer = gl.createBuffer();
+                this.programInfo = programInfo;
+                this.texture = texture;
+                const program = programInfo.program;
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
             }
         }
 
@@ -411,20 +354,67 @@
             }
         }
 
+        class Model extends WorldEntity {
+            constructor(gl, obj, mtl, programInfo, position) {
+                super(position);
+                this.mesh = mesh;
+                this.programInfo = programInfo;
+                this.obj = obj;
+                this.mtl = mtl;
+
+                this.textures = [];
+                this.diffuse = [];
+                this.ambient = [];
+                this.specular = [];
+                for (let i = 0; i < obj.materialNames.length; ++i) {
+                    let part = mtl.materials[obj.materialNames[i]];
+                    if (part.mapDiffuse) {
+                        this.textures.push(new Texture(gl, 'model/nanosuit'+part.mapDiffuse.filename));
+                    }
+                    if (part.diffuse) {
+                        this.diffuse.push(part.diffuse[0]);
+                    }
+                    if (part.ambient) {
+                        this.ambient.push(part.ambient[0]);
+                    }
+                    if (part.specular) {
+                        this.specular.push(part.specular[0]);
+                    }
+                }
+            }
+
+            draw(gl, camera) {
+                const pgi = this.programInfo;
+                gl.useProgram(pgi.program);
+
+                gl.uniformi1(pgi.u_sampler_loc, 0);
+                gl.uniformMatrix4fv(pgi.u_model_loc, false, this.modelMatrix);
+                gl.uniformMatrix4fv(pgi.u_view_loc, false, camera.viewMatrix);
+                gl.uniformMatrix4fv(pgi.u_proj_loc, false, camera.projMatrix);
+
+                // TODO: create mesh class and etc.
+            }
+        }
+
+        var shaderCodes = {};
+
         const RADIUS = 5;
         const ROT_X_OMEGA = 100, ROT_Y_OMEGA = 100;
         const LAMP_ROT_OMEGA = 180;
+        const BOX_ROT_OMEGA = 60;
         var rotXOmega = 0, rotYOmega = 0; // degrees per sec
 
         var frameCount = 0;
-        var lastTick = (new Date()).getTime();
-        var lastTickB = lastTick;
-        var frametime = 0;
-        var fps = document.getElementById("fps");
-        var camRotateMatX = mat4.create(), camRotateMatY = mat4.create();
-        var camRotateMat = mat4.create();
-        var camRight = vec3.create();
-        var lampRotMat = mat4.create();
+            lastTick = (new Date()).getTime();
+            lastTickB = lastTick;
+            frametime = 0;
+            fps = document.getElementById("fps");
+            camRotateMatX = mat4.create(), camRotateMatY = mat4.create();
+            camRotateMat = mat4.create();
+            camRight = vec3.create();
+            lampRotMat = mat4.create();
+            boxRotMat = mat4.create();
+
         function drawScene(gl, camera, objects) {
 
             // calulate frame time
@@ -470,6 +460,21 @@
             rotXOmega = 0;
             rotYOmega = 0;
 
+            // rotate box
+            rotAngle = (BOX_ROT_OMEGA*dt/1e3) % 360;
+            newPos = vec4.create();
+            mat4.fromRotation(boxRotMat, glMatrix.toRadian(rotAngle), [0.0, 1.0, 0.0]);
+            vec4.transformMat4(newPos,
+                [
+                    objects.box.position[0],
+                    objects.box.position[1],
+                    objects.box.position[2],
+                    1.0
+                ],
+                boxRotMat
+            );
+            mat4.mul(objects.box.modelMatrix, boxRotMat, objects.box.modelMatrix);
+
             // draw objects
             objects.box.draw(gl, camera, objects.lamp);
             objects.lamp.draw(gl, camera);
@@ -503,12 +508,18 @@
             $("#glShading").text(gl.getParameter(gl.SHADING_LANGUAGE_VERSION));
             $("#glVendor").text(gl.getParameter(gl.VENDOR));
 
-            const boxVert = loadShader(gl, gl.VERTEX_SHADER, vertexShaderCode);
-            const boxFrag = loadShader(gl, gl.FRAGMENT_SHADER, fragmentShaderCode);
+            OBJ.downloadMeshes({
+                'nanosuit': 'model/nanosuit/nanosuit.obj'
+            }, (meshes) => {
+                console.log(meshes.nanosuit);
+            });
+
+            const boxVert = loadShader(gl, gl.VERTEX_SHADER, shaderCodes['box.vert']);
+            const boxFrag = loadShader(gl, gl.FRAGMENT_SHADER, shaderCodes['box.frag']);
             const boxProgram = loadShaderProgram(gl, boxVert, boxFrag);
 
-            const lampVert = loadShader(gl, gl.VERTEX_SHADER, lampVertexShaderCode);
-            const lampFrag = loadShader(gl, gl.FRAGMENT_SHADER, lampFragmentShaderCode);
+            const lampVert = loadShader(gl, gl.VERTEX_SHADER, shaderCodes['lamp.vert']);
+            const lampFrag = loadShader(gl, gl.FRAGMENT_SHADER, shaderCodes['lamp.frag']);
             const lampProgram = loadShaderProgram(gl, lampVert, lampFrag);
 
             const boxProgramInfo = {
@@ -549,6 +560,7 @@
 
             gl.enable(gl.DEPTH_TEST);
             gl.depthFunc(gl.LESS);
+
             drawScene(
                 gl,
                 camera,
@@ -575,6 +587,11 @@
                 rotXOmega = 0;
                 rotYOmega = 0;
             });
+            $("#glCanvas").mouseleave(() => {
+                isMouseHeld = false;
+                rotXOmega = 0;
+                rotYOmega = 0;
+            });
             $("#glCanvas").mousemove((e) => {
                 mousePos.x = e.pageX - canvasPos.x;
                 mousePos.y = e.pageY - canvasPos.y;
@@ -593,7 +610,21 @@
                 oldMousePos.x = mousePos.x;
                 oldMousePos.y = mousePos.y;
             });
-            main();
+            var shaders = [
+                            'box.vert',
+                            'box.frag',
+                            'lamp.vert',
+                            'lamp.frag'
+                          ];
+            for (let i = 0; i < shaders.length; ++i) {
+                let cb = () => {};
+                if (i == shaders.length-1) {
+                    cb = () => {
+                        main();
+                    };
+                }
+                $.get('shader/'+shaders[i], (code)=>{shaderCodes[shaders[i]]=code;}).done(cb);
+            }
         });
         
     </script>
