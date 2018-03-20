@@ -31,7 +31,8 @@ class Texture {
                     img
                 );
 
-                gl.generateMipmap(gl.TEXTURE_2D);
+                if (isPowOf2(img.naturalWidth) && isPowOf2(img.naturalHeight))
+                    gl.generateMipmap(gl.TEXTURE_2D);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -51,5 +52,9 @@ class Texture {
 
     bind() {
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    }
+
+    isPowOf2(num) {
+        return (num != 0) && (x & (x-1) == 0);
     }
 }
