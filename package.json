@@ -19,6 +19,9 @@
   "homepage": "https://github.com/phonxvzf/webgl-exp-heroku#readme",
   "dependencies": {
     "body-parser": "^1.18.2",
-    "express": "^4.16.2"
+    "express": "^4.16.2",
+    "gl": "^4.0.4",
+    "gl-matrix": "^2.4.0",
+    "node-png": "^0.4.3"
   }
 }
