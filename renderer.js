@@ -1,100 +1,237 @@
-const BUFFER_WIDTH = 640, BUFFER_HEIGHT = 480;
-const gl = require('gl')(BUFFER_WIDTH, BUFFER_HEIGHT);
+const BUFFER_WIDTH = 720, BUFFER_HEIGHT = 480;
+const gl = require('gl')(BUFFER_WIDTH, BUFFER_HEIGHT, {preserveDrawingBuffer: true});
+const cp = require('child_process');
 const glMatrix = require('gl-matrix');
 const fs = require('fs');
 const PNG = require('node-png').PNG;
+const glDebug = require('webgl-debug');
 
-function loadShader(gl, type, src) {
-    const shaderObject = gl.createShader(type);
-    gl.shaderSource(shaderObject, src);
-    gl.compileShader(shaderObject);
-    if (!gl.getShaderParameter(shaderObject, gl.COMPILE_STATUS)) {
-        console.log("Shader compilation error: " + gl.getShaderInfoLog(shaderObject));
-        gl.deleteShader(shaderObject);
-        return null;
-    }
-    return shaderObject;
+const Camera = require('./renderer/camera.js');
+const Texture = require('./renderer/texture.js');
+
+const primitive = require('./renderer/primitive.js');
+const Shader = require('./renderer/shader.js');
+const attribs = require('./renderer/attribs.js');
+
+shaderCode = {
+    TRIANGLE_VERT: null,
+    TRIANGLE_FRAG: null,
+    BOX_VERT: null,
+    BOX_FRAG: null,
+    LAMP_VERT: null,
+    LAMP_FRAG: null,
+    FRAME_VERT: null,
+    FRAME_FRAG: null,
 }
 
-function loadShaderProgram(gl, vert, frag) {
-    const shaderProgram = gl.createProgram();
-    gl.attachShader(shaderProgram, vert);
-    gl.attachShader(shaderProgram, frag);
-    gl.linkProgram(shaderProgram);
-    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-        console.log("Shader program linking error: " + gl.getProgramInfoLog(shaderProgram));
+shaders = {
+    TRIANGLE: {},
+    BOX: {},
+    LAMP: {},
+    FRAME: {},
+}
+
+frame = {
+    init: function() {
+        this.buffer = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.buffer);
+
+        this.texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, BUFFER_WIDTH, BUFFER_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texture, 0);
+
+        this.renderBuffer = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, this.renderBuffer);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_STENCIL, BUFFER_WIDTH, BUFFER_HEIGHT);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, this.renderBuffer);
+
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE) {
+            console.log(glDebug.glEnumToString(gl.checkFramebufferStatus(gl.FRAMEBUFFER)));
+            throw new Error("GL ERROR: Framebuffer is not complete.");
+        }
+        else {
+            console.log("Framebuffer is complete.");
+        }
+        renderer.clearBuffer();
+        this.quad = new primitive.FrameQuad(gl, shaders.FRAME.pgi, attribs.FRAME_VERTICES);
+        this.bindDefaultBuffer();
+    },
+    bindBuffer: function() {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.buffer);
+    },
+    bindDefaultBuffer: function() {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    },
+    postProcess: function() {
+        this.bindDefaultBuffer();
+        renderer.clearBuffer();
+        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+        this.quad.draw(gl);
     }
-    return shaderProgram;
+}
+
+objects = {
+    init: function() {
+        this.triangle = new primitive.Triangle(
+            gl,
+            shaders.TRIANGLE.pgi,
+            attribs.TRIANGLE_ATTRIBS
+        );
+        this.lamp = new primitive.Lamp(
+            gl,
+            [-2,0,2],
+            shaders.LAMP.pgi,
+            attribs.LAMP_ATTRIBS,
+            [255,255,255]
+        );
+        this.box = new primitive.NormalBox(
+            gl,
+            [0,0,0],
+            shaders.BOX.pgi, 
+            new Texture(gl, 'static/img/marble_res.png'), 
+            attribs.BOX_VERTICES
+        );
+    }
 }
 
 renderer = {
-    vertexSampleCode: null,
-    fragmentSampleCode: null,
-    TRIANGLE_ATTRIBS: [
-        0.0, 1.0, 0.0, 1.0, 0.0, 0.0,
-        -1.0, -1.0, 0.0, 0.0, 1.0, 0.0,
-        1.0, -1.0, 0.0, 0.0, 0.0, 1.0
-    ],
-    FLIP_MATRIX: glMatrix.mat4.fromScaling(glMatrix.mat4.create(), [1, -1, 1]),
-    trianglePGI: {
-        program: null,
-        a_position_loc: null,
-    },
-    renderTriangle: function() {
+    width: BUFFER_WIDTH,
+    height: BUFFER_HEIGHT,
+    FPS: 60,
+    camera: new Camera([5,2,5], 45, BUFFER_WIDTH/BUFFER_HEIGHT, 0.1, 100),
+    clearBuffer: function() {
         gl.viewport(0, 0, BUFFER_WIDTH, BUFFER_HEIGHT);
         gl.clearColor(0.0, 0.0, 0.0, 1.0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        var buffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.TRIANGLE_ATTRIBS), gl.STATIC_DRAW);
-        gl.vertexAttribPointer(
-            this.trianglePGI.a_position_loc,
-            3,
-            gl.FLOAT,
-            false,
-            24,
-            0
-        );
-        gl.vertexAttribPointer(
-            this.trianglePGI.a_color_loc,
-            3,
-            gl.FLOAT,
-            false,
-            24,
-            12
-        );
-        gl.enableVertexAttribArray(this.trianglePGI.a_position_loc);
-        gl.enableVertexAttribArray(this.trianglePGI.a_color_loc);
-
-        gl.useProgram(this.trianglePGI.program);
-        gl.uniformMatrix4fv(this.trianglePGI.u_scale_mat_loc, false, this.FLIP_MATRIX);
-
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        var pixels = new Uint8Array(BUFFER_WIDTH * BUFFER_HEIGHT * 4); // {r,g,b,a} -> 4 components per pixel
-        gl.readPixels(0, 0, BUFFER_WIDTH, BUFFER_HEIGHT, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-        gl.deleteBuffer(buffer);
-
-        var png = new PNG({width: BUFFER_WIDTH, height: BUFFER_HEIGHT});
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    },
+    clearBufferEx: function() {
+        gl.viewport(0, 0, BUFFER_WIDTH, BUFFER_HEIGHT);
+        gl.clearColor(0.0, 0.0, 1.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    },
+    encodePNG: function(w, h, pixels) {
+        var png = new PNG({width: w, height: h});
         png.data = Buffer.from(pixels);
         return png.pack();
+    },
+    readPixels: function(w = this.width, h = this.height) {
+        var pixels = new Uint8Array(w * h * 4);
+        gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        return pixels;
+    },
+    createPNG: function() {
+        return this.encodePNG(BUFFER_WIDTH, BUFFER_HEIGHT, this.readPixels(BUFFER_WIDTH, BUFFER_HEIGHT));
+    },
+    createWebP: function() {
+        var proc = cp.spawnSync('ffmpeg', [
+            '-y', // overwrite output
+            '-hide_banner',
+            '-s', BUFFER_WIDTH + 'x' + BUFFER_HEIGHT,
+            '-f', 'rawvideo',
+            '-pix_fmt', 'rgba',
+            '-i', '-',
+            '-f', 'webp',
+            '-'
+        ],
+        {
+            maxBuffer: BUFFER_WIDTH * BUFFER_HEIGHT * 4,
+            input: this.readPixels()
+        });
+        return proc.stdout;
+    },
+    spawnEncoder: function() {
+        var proc = cp.spawn('ffmpeg', [
+            '-hide_banner',
+            '-re',
+            '-s', BUFFER_WIDTH + 'x' + BUFFER_HEIGHT,
+            '-f', 'rawvideo',
+            '-pix_fmt', 'rgba',
+            '-i', '-',
+            '-an', // disable audio
+            '-threads', '0',
+            '-f', 'mpegts', // MPEG transport stream
+            '-preset', 'ultrafast',
+            '-codec:v', 'mpeg1video', // This codec is required to be used with jsmpeg
+            '-r', this.FPS, // maximum frame rate
+            '-b', '1000k', // maximum bitrate
+            '-'
+            ],
+            {
+                maxBuffer: BUFFER_WIDTH * BUFFER_HEIGHT * 4,
+            });
+        return proc;
+    },
+    renderBox: function() {
+        frame.bindBuffer();
+        objects.box.draw(gl, this.camera, objects.lamp);
+        frame.postProcess();
+        return this.createPNG(BUFFER_WIDTH, BUFFER_HEIGHT);
+    },
+    renderTriangle: function() {
+        frame.bindBuffer();
+        objects.triangle.draw(gl);
+        frame.postProcess();
+        return this.createPNG(BUFFER_WIDTH, BUFFER_HEIGHT);
+    },
+    renderScene: function(lampPosition, boxPosition) {
+        frame.bindBuffer();
+        this.clearBuffer();
+        if (lampPosition) objects.lamp.position = lampPosition;
+        if (boxPosition) objects.box.position = boxPosition;
+        objects.lamp.draw(gl, this.camera);
+        objects.box.draw(gl, this.camera, objects.lamp);
+        frame.postProcess();
+    },
+    getError: function() {
+        return glDebug.glEnumToString(gl.getError());
     },
 }
 
 module.exports = function() {
-    console.log('GL_VERSION: ', gl.getParameter(gl.GL_VERSION));
-    console.log('GL_VENDOR: ', gl.getParameter(gl.GL_VENDOR));
+    if (!gl) {
+        console.log("CRITICAL ERROR: Could not create GL context.");
+        return null;
+    }
+    glDebug.init();
     console.log('GL_SHADING_LANGUAGE_VERSION: ', gl.getParameter(gl.SHADING_LANGUAGE_VERSION));
-    renderer.vertexSampleCode = fs.readFileSync('static/shader/triangle.vert').toString();
-    renderer.fragmentSampleCode = fs.readFileSync('static/shader/triangle.frag').toString();
-    var program = loadShaderProgram(
-        gl,
-        loadShader(gl, gl.VERTEX_SHADER, renderer.vertexSampleCode),
-        loadShader(gl, gl.FRAGMENT_SHADER, renderer.fragmentSampleCode)
+    shaderCode.TRIANGLE_VERT = fs.readFileSync('static/shader/triangle.vert').toString();
+    shaderCode.TRIANGLE_FRAG = fs.readFileSync('static/shader/triangle.frag').toString();
+    shaderCode.BOX_VERT = fs.readFileSync('static/shader/box.vert').toString();
+    shaderCode.BOX_FRAG = fs.readFileSync('static/shader/box.frag').toString();
+    shaderCode.LAMP_VERT = fs.readFileSync('static/shader/lamp.vert').toString();
+    shaderCode.LAMP_FRAG = fs.readFileSync('static/shader/lamp.frag').toString();
+    shaderCode.FRAME_VERT = fs.readFileSync('static/shader/frame.vert').toString();
+    shaderCode.FRAME_FRAG = fs.readFileSync('static/shader/frame.frag').toString();
+    
+    shaders.TRIANGLE = new Shader(gl, shaderCode.TRIANGLE_VERT, shaderCode.TRIANGLE_FRAG, 
+        ["a_position","a_color"],
+        ["u_scale_mat"]
     );
-    renderer.trianglePGI.program = program;
-    renderer.trianglePGI.a_position_loc = gl.getAttribLocation(program, "a_position");
-    renderer.trianglePGI.a_color_loc = gl.getAttribLocation(program, "a_color");
-    renderer.trianglePGI.u_scale_mat_loc = gl.getUniformLocation(program, "u_scale_mat");
+    shaders.BOX = new Shader(gl, shaderCode.BOX_VERT, shaderCode.BOX_FRAG,
+        ["in_position","in_tex_coords","in_normal"],
+        ["u_model","u_view","u_proj","u_sampler","u_light_clr","u_light_pos","u_cam_pos"]
+    );
+    shaders.LAMP = new Shader(gl, shaderCode.LAMP_VERT, shaderCode.LAMP_FRAG,
+        ["in_position"],
+        ["u_model","u_view","u_proj","u_color"]
+    );
+    shaders.FRAME = new Shader(gl, shaderCode.FRAME_VERT, shaderCode.FRAME_FRAG,
+        ["in_position","in_tex_coords"],
+        ["u_flip_mat","u_sampler","u_kernel"]
+    );
+
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+
+    frame.init();
+    objects.init();
+
+    renderer.clearBuffer();
+
     return renderer;
 }
 

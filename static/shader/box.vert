@@ -1,4 +1,3 @@
-#version 100
 attribute vec3 in_position;
 attribute vec2 in_tex_coords;
 attribute vec3 in_normal;

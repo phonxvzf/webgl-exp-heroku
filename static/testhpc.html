@@ -2,6 +2,33 @@
 <html>
     <head>
         <title>Server-Sided Rendering Test</title>
+        <style>
+            #videoCanvas {
+                width: 100%;
+            }
+            body {
+                padding: 0px;
+                margin: 0px;
+            }
+        </style>
     </head>
-    <img type="image/png" src="/render">
+    <body>
+        <canvas id="videoCanvas" width="720" height="480"></canvas>
+
+        <script src="js/lib/socket.io.js"></script>
+        <script src="js/lib/jsmpeg.min.js"></script>
+        <script>
+            window.onload = () => {
+                var canvas = document.getElementById('videoCanvas');
+                var player = new JSMpeg.Player("ws://"+document.domain+":8080/render", 
+                    {
+                        canvas: canvas,
+                        audio: false,
+                        videoBufferSize: 1875 * 1024,
+                    }
+                );
+                player.play();
+            };
+        </script>
+    </body>
 </html>
