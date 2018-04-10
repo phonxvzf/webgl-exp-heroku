@@ -146,6 +146,7 @@ renderer = {
     spawnEncoder: function() {
         var proc = cp.spawn('ffmpeg', [
             '-hide_banner',
+            '-loglevel', 'fatal',
             '-re',
             '-s', BUFFER_WIDTH + 'x' + BUFFER_HEIGHT,
             '-f', 'rawvideo',
@@ -153,11 +154,12 @@ renderer = {
             '-i', '-',
             '-an', // disable audio
             '-threads', '0',
-            '-f', 'mpegts', // MPEG transport stream
             '-preset', 'ultrafast',
+            '-f', 'mpegts', // MPEG transport stream
             '-codec:v', 'mpeg1video', // This codec is required to be used with jsmpeg
+            '-mbd', '2',
             '-r', this.FPS, // maximum frame rate
-            '-b', '1000k', // maximum bitrate
+            '-b', '1024k', // maximum bitrate
             '-'
             ],
             {

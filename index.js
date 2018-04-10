@@ -26,7 +26,10 @@ app.get('/hpc', function(req, res) {
 });
 
 wss.on('connection', function(socket, req) {
-    console.log("Client connected");
+    function logip(msg) {
+        console.log("("+req.connection.remoteAddress+") " + msg);
+    }
+    logip("Client connected");
     var stop = false;
     var encoder = renderer.spawnEncoder();
     encoder.stderr.pipe(process.stdout);
@@ -34,13 +37,13 @@ wss.on('connection', function(socket, req) {
         try {
             socket.send(data);
         } catch (e) {
-            console.log("Unable to send data: " + e);
+            logip("Unable to send data: " + e);
             stop = true;
             encoder.stdin.end();
         }
     });
     socket.on('close', function(reason) {
-        console.log("Client disconnected (reason: " + reason + ")");
+        logip("Client disconnected (reason: " + reason + ")");
         stop = true;
         encoder.stdin.end();
     });
@@ -63,7 +66,7 @@ wss.on('connection', function(socket, req) {
             // record and report benchmark
             ++frameCount;
             if (now - bStartTime >= 3000) {
-                console.log("Render rate: " + (frameCount/3).toFixed(2) + " fps ");
+                logip("Render rate: " + (frameCount/3).toFixed(2) + " fps ");
                 bStartTime = now;
                 frameCount = 0;
             }
