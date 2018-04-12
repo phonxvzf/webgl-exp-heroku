@@ -1,4 +1,4 @@
-## WebGL & OpenGL HPC Experiment
+# WebGL & OpenGL HPC Experiment
 This project is initially started for rendering 3D-scanned model with HDR in real-time which can be viewed on the browser, but unfortunately the implementation didn't go well with Apple's iOS webkit, so *we* have decided to instead build a HPC service for rendering and then stream the pixels to the client.
 
 ## How does it work?
