@@ -101,7 +101,7 @@ objects = {
 renderer = {
     width: BUFFER_WIDTH,
     height: BUFFER_HEIGHT,
-    FPS: 60,
+    FPS: 120,
     camera: new Camera([5,2,5], 45, BUFFER_WIDTH/BUFFER_HEIGHT, 0.1, 100),
     clearBuffer: function() {
         gl.viewport(0, 0, BUFFER_WIDTH, BUFFER_HEIGHT);
@@ -151,19 +151,20 @@ renderer = {
             '-s', BUFFER_WIDTH + 'x' + BUFFER_HEIGHT,
             '-f', 'rawvideo',
             '-pix_fmt', 'rgba',
-            '-i', '-',
+            //'-r', this.FPS, // force input frame rate
+            '-i', '-', // capture stdin
             '-an', // disable audio
             '-threads', '0',
             '-preset', 'ultrafast',
             '-f', 'mpegts', // MPEG transport stream
             '-codec:v', 'mpeg1video', // This codec is required to be used with jsmpeg
-            '-mbd', '2',
-            '-r', this.FPS, // maximum frame rate
+            '-mbd', '2', // fix mpeg1 rendering glitch
+            '-r', this.FPS, // maximum output frame rate
             '-b', '1024k', // maximum bitrate
-            '-'
+            '-' // output to stdout
             ],
             {
-                maxBuffer: BUFFER_WIDTH * BUFFER_HEIGHT * 4,
+                maxBuffer: BUFFER_WIDTH * BUFFER_HEIGHT * 1000,
             });
         return proc;
     },
