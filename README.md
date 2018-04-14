@@ -21,6 +21,6 @@ Just clone this repository and call `npm install` to install all needed NodeJS d
 ## Future Plans
 To begin with, for the animation to be chronologically correct, I need to pass `-re` flag to `FFmpeg`. This causes `FFmpeg` to stall its input from `stdin` to achieve its *self-determined* correct frame rate, resulting less transcoding rate (from 100+ fps to 25 fps).
 
-My guess is that piping raw pixels through `stdin` might be a bottleneck here since when I removed the `-re` flag, benchmarking reported 60 fps rendering speed (of course the animation timing was weird). 
+My guess is that piping raw pixels through `stdin` might be a bottleneck here since when I removed the `-re` flag, benchmarking reported 100+ fps rendering speed (of course the animation timing was weird). 
 
 So, I plan to move from `NodeJS` or at least create a plugin for it in C/C++ with `libavformat` and `libavcodec` so that I can encode the raw pixels directly. It also make senses to build a high performance service in C/C++. I could just say good bye to garbage collection and squeeze everything out of the hardware.
