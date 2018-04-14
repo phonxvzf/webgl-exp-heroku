@@ -3,27 +3,27 @@ const Texture = require('./texture.js');
 
 matrices = {
     FLIP_MATRIX: glMatrix.mat4.fromScaling(glMatrix.mat4.create(), [2, -2, 1]),
-    NO_KERNEL: new Float32Array([
+    KERNEL_NONE: new Float32Array([
         0, 0, 0,
         0, 1, 0,
         0, 0, 0
     ]),
-    SHARPEN_KERNEL: new Float32Array([
+    KERNEL_SHARPEN: new Float32Array([
         -1, -1, -1,
         -1, 9, -1,
         -1, -1, -1
     ]),
-    BLUR_KERNEL: new Float32Array([
+    KERNEL_BLUR: new Float32Array([
         1/16, 2/16, 1/16,
         2/16, 4/16, 2/16,
         1/16, 2/16, 1/16
     ]),
-    GAUSSIAN_BLUR_KERNEL: new Float32Array([
+    KERNEL_GAUSSIAN_BLUR: new Float32Array([
         0.111108,	0.111113,	0.111108,
         0.111113,	0.111118,	0.111113,
         0.111108,	0.111113,	0.111108,
     ]),
-    EDGE_DETECTION_KERNEL: new Float32Array([
+    KERNEL_EDGE_DETECTION: new Float32Array([
         1, 1, 1,
         1, -8, 1,
         1, 1, 1,
@@ -183,6 +183,7 @@ class FrameQuad {
     constructor(gl, pgi, vertices) {
         this.buffer = gl.createBuffer();
         this.pgi = pgi;
+        this.kernel = matrices.KERNEL_NONE;
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
         // position
@@ -212,7 +213,7 @@ class FrameQuad {
 
         gl.uniform1i(this.pgi.u_sampler_loc, 0);
         gl.uniformMatrix4fv(this.pgi.u_flip_mat_loc, false, matrices.FLIP_MATRIX);
-        gl.uniformMatrix3fv(this.pgi.u_kernel_loc, false, matrices.EDGE_DETECTION_KERNEL);
+        gl.uniformMatrix3fv(this.pgi.u_kernel_loc, false, this.kernel);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -226,4 +227,5 @@ module.exports = {
     Lamp : Lamp,
     Triangle : Triangle,
     FrameQuad : FrameQuad,
+    MATRICES : matrices,
 }

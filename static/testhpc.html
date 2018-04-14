@@ -14,8 +14,15 @@
     </head>
     <body>
         <canvas id="videoCanvas" width="720" height="480"></canvas>
+        <h3>Post Processing</h3>
+        <input type="radio" name="post_process" value="post_none">None
+        <input type="radio" name="post_process" value="post_blur">Blur
+        <input type="radio" name="post_process" value="post_sharpen">Sharpen
+        <input type="radio" name="post_process" value="post_detect_edge">Edge Detection
 
+        <script src="js/lib/jquery.min.js"></script>
         <script src="js/lib/jsmpeg.min.js"></script>
+        <script src="js/socket.js"></script>
         <script>
             window.onload = () => {
                 var canvas = document.getElementById('videoCanvas');
@@ -24,9 +31,23 @@
                         canvas: canvas,
                         audio: false,
                         videoBufferSize: 1875 * 1024,
+                        source: CustomSocket,
                     }
                 );
                 player.play();
+
+                var connected = false;
+                var source = player.source;
+                source.onConnect = function() {
+                    connected = true;
+                }
+                var socket = source.socket;
+
+                $('input:radio[name="post_process"]').change(function() {
+                    if (connected) {
+                        socket.send($(this).val());
+                    }
+                });
             };
         </script>
     </body>

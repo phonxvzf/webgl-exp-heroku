@@ -42,6 +42,25 @@ wss.on('connection', function(socket, req) {
             encoder.stdin.end();
         }
     });
+    socket.on('message', function(data) {
+        switch(data) {
+            case 'post_none':
+                renderer.setKernel(renderer.kernels.KERNEL_NONE);
+            break;
+            case 'post_blur':
+                renderer.setKernel(renderer.kernels.KERNEL_BLUR);
+            break;
+            case 'post_sharpen':
+                renderer.setKernel(renderer.kernels.KERNEL_SHARPEN);
+            break;
+            case 'post_detect_edge':
+                renderer.setKernel(renderer.kernels.KERNEL_EDGE_DETECTION);
+            break;
+            default:
+                logip('Error: Unknown operation code');
+            break;
+        }
+    });
     socket.on('close', function(reason) {
         logip("Client disconnected (reason: " + reason + ")");
         stop = true;
@@ -65,8 +84,8 @@ wss.on('connection', function(socket, req) {
 
             // record and report benchmark
             ++frameCount;
-            if (now - bStartTime >= 3000) {
-                logip("Render rate: " + (frameCount/3).toFixed(2) + " fps ");
+            if (now - bStartTime >= 5000) {
+                logip("Render rate: " + (frameCount/5).toFixed(2) + " fps ");
                 bStartTime = now;
                 frameCount = 0;
             }

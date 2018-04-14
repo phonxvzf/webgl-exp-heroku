@@ -102,6 +102,7 @@ renderer = {
     width: BUFFER_WIDTH,
     height: BUFFER_HEIGHT,
     FPS: 120,
+    kernels: primitive.MATRICES,
     camera: new Camera([5,2,5], 45, BUFFER_WIDTH/BUFFER_HEIGHT, 0.1, 100),
     clearBuffer: function() {
         gl.viewport(0, 0, BUFFER_WIDTH, BUFFER_HEIGHT);
@@ -120,7 +121,7 @@ renderer = {
     },
     readPixels: function(w = this.width, h = this.height) {
         var pixels = new Uint8Array(w * h * 4);
-        gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels); // TODO: Reduce to RGB if possible
         return pixels;
     },
     createPNG: function() {
@@ -147,7 +148,7 @@ renderer = {
         var proc = cp.spawn('ffmpeg', [
             '-hide_banner',
             '-loglevel', 'fatal',
-            '-re',
+            '-re', // sync transcoding rate with input
             '-s', BUFFER_WIDTH + 'x' + BUFFER_HEIGHT,
             '-f', 'rawvideo',
             '-pix_fmt', 'rgba',
@@ -191,6 +192,9 @@ renderer = {
     },
     getError: function() {
         return glDebug.glEnumToString(gl.getError());
+    },
+    setKernel: function(kernel) {
+        frame.quad.kernel = kernel;
     },
 }
 
